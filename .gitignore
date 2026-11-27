@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.DS_Store
+*.local
+.env
+.vite/
+coverage/

@@ -1,0 +1,12 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+# Minutes. 60 * 24 * 14 = 20160. pnpm will not resolve a version published
+# more recently than this, including transitive dependencies.
+minimumReleaseAge: 20160
+
+# esbuild ships a platform binary via an optional dependency. Its install
+# script is not required, and we do not execute dependency lifecycle scripts.
+neverBuiltDependencies:
+  - esbuild
