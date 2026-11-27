@@ -1,7 +1,7 @@
 import { planRoutes, simTimeToIso } from "@acs/astro";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
-import { existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -38,6 +38,55 @@ function playbookPath(): string {
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) throw new Error(`PLAY.md not found. Looked in ${candidates.join(", ")}`);
   return found;
+}
+
+function webRoot(): string | null {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const root = path.resolve(here, "../../../apps/web/dist");
+  return existsSync(path.join(root, "index.html")) ? root : null;
+}
+
+function contentType(file: string): string {
+  switch (path.extname(file)) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    case ".ico":
+      return "image/x-icon";
+    case ".woff2":
+      return "font/woff2";
+    case ".wasm":
+      return "application/wasm";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+/** Map a URL path onto a file inside the built observer. Rejects paths that escape the dist directory. */
+function resolveWebFile(root: string, urlPath: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+  } catch {
+    return null;
+  }
+  if (decoded.includes("\0")) return null;
+  const rel = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "");
+  const file = path.resolve(root, rel);
+  const rootPrefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+  if (file !== root && !file.startsWith(rootPrefix)) return null;
+  return file;
 }
 
 function jsonBody(body: unknown): Record<string, unknown> {
@@ -308,6 +357,29 @@ export async function createApp(opts: AppOptions): Promise<AppContext> {
     sockets.add(socket);
     socket.send(JSON.stringify({ type: "world", snapshot: sim.snapshot() }));
     socket.on("close", () => sockets.delete(socket));
+  });
+
+  const observer = webRoot();
+  app.setNotFoundHandler((req, reply) => {
+    const urlPath = req.url.split("?")[0] ?? "/";
+    if (urlPath.startsWith("/api") || urlPath === "/ws" || urlPath.startsWith("/ws/")) {
+      return reply.status(404).send({
+        error: "not_found",
+        message: `No ${req.method} ${urlPath}. The player manual is GET /play.md.`,
+        details: null,
+      });
+    }
+    if (!observer || (req.method !== "GET" && req.method !== "HEAD")) {
+      return reply.status(404).send({ error: "not_found", message: `No ${req.method} ${urlPath}.`, details: null });
+    }
+    const file = resolveWebFile(observer, urlPath);
+    if (file && existsSync(file) && statSync(file).isFile()) {
+      return reply.type(contentType(file)).send(createReadStream(file));
+    }
+    if (urlPath.startsWith("/assets/")) {
+      return reply.status(404).send({ error: "not_found", message: `Missing asset ${urlPath}.`, details: null });
+    }
+    return reply.type("text/html; charset=utf-8").send(createReadStream(path.join(observer, "index.html")));
   });
 
   let timer: ReturnType<typeof setInterval> | undefined;

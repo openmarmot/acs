@@ -4,6 +4,24 @@ Anarcho-Capitalism in Space is a persistent, real-time solar-system economy. The
 
 ## Run
 
+### Docker
+
+`./start.sh` is the way to run ACS when the host Node.js is older than 22. It needs Docker and Docker Compose. The script builds a Node.js 22 image (the workspace `minimumReleaseAge` of 14 days still applies to `pnpm install` inside the image), starts one container, and waits until the simulation answers.
+
+```bash
+./start.sh
+```
+
+- Observer: http://127.0.0.1:8787
+- Player manual: http://127.0.0.1:8787/play.md
+- API: http://127.0.0.1:8787/api/health
+
+The container bind-mounts `./data`, so `acs.db` and its WAL and SHM files stay on the host across rebuilds, restarts, and reboots. Ctrl-C sends SIGTERM to the server, which saves the sim clock and then exits.
+
+### Local pnpm
+
+Node.js 22 or newer:
+
 ```bash
 pnpm install
 pnpm --filter @acs/astro build
@@ -20,7 +38,7 @@ pnpm --filter @acs/web dev
 - Player manual: http://127.0.0.1:8787/play.md
 - Observer: http://127.0.0.1:5173
 
-The SQLite database is `data/acs.db` (WAL). Stop the server with Ctrl-C; the sim clock freezes while the process is down and resumes from that instant. `ACS_DB` and `PORT` override the defaults.
+The SQLite database is `data/acs.db` (WAL). Stop the server with Ctrl-C; the sim clock freezes while the process is down and resumes from that instant. `ACS_DB` and `PORT` override the defaults. A production build of the web app is also served by the API on port 8787, which is what the Docker image does.
 
 ```bash
 pnpm typecheck

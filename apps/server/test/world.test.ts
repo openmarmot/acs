@@ -41,6 +41,18 @@ describe("acs world", () => {
     const briefing = await ctx.app.inject({ method: "GET", url: "/api/me/briefing" });
     expect(briefing.statusCode).toBe(401);
     expect(briefing.json().message).toMatch(/Bearer/);
+    const missing = await ctx.app.inject({ method: "GET", url: "/api/no-such" });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error).toBe("not_found");
+    const home = await ctx.app.inject({ method: "GET", url: "/" });
+    if (home.statusCode === 200) {
+      expect(String(home.headers["content-type"])).toMatch(/html/);
+      expect(home.body).toContain("ACS");
+    } else {
+      expect(home.statusCode).toBe(404);
+    }
+    const escaped = await ctx.app.inject({ method: "GET", url: "/../package.json" });
+    expect(escaped.body).not.toContain("\"name\": \"acs\"");
   });
 
   it("keeps corporations and the sim clock across a restart, ignoring downtime", async () => {
