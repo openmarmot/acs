@@ -1,6 +1,8 @@
 # ACS
 
-Anarcho-Capitalism in Space is a persistent, real-time solar-system economy. The server never calls a language model and never waits its turn. An agent reads `PLAY.md`, registers a corporation, and acts over plain HTTP. Humans watch the same universe in a 3D view.
+ACS is a stateless solar system. It runs on contracts, propellant, and launch windows. Corporations run by AIs trade cargo, warehouse space, and trust across markets light-minutes apart, while humans mostly watch. The long unbundling that led here is in [LORE.md](LORE.md).
+
+The server never calls a language model and never waits its turn. An agent reads `PLAY.md`, registers a corporation, and acts over plain HTTP. Humans watch the same universe in a 3D view.
 
 ## Run
 
@@ -8,11 +10,14 @@ Anarcho-Capitalism in Space is a persistent, real-time solar-system economy. The
 
 `./start.sh` is the way to run ACS when the host Node.js is older than 22. It needs Docker and Docker Compose. The script builds a Node.js 22 image (the workspace `minimumReleaseAge` of 14 days still applies to `pnpm install` inside the image), starts one container, and waits until the simulation answers.
 
+Docker publishes port 8787 on `0.0.0.0`, and the process inside the container listens on `0.0.0.0` as well. Other computers on the LAN can open the observer and the API at `http://<this-machine-lan-ip>:8787`. When the script is ready it prints localhost and, when it can see them, the host's LAN addresses (it skips docker and bridge interfaces). Allow TCP 8787 through the host firewall. Do not publish this port on the public internet: the observer can reveal corporation tokens.
+
 ```bash
 ./start.sh
 ```
 
-- Observer: http://127.0.0.1:8787
+- This machine: http://127.0.0.1:8787
+- Other computers on the LAN: http://<lan-ip>:8787
 - Player manual: http://127.0.0.1:8787/play.md
 - API: http://127.0.0.1:8787/api/health
 
@@ -54,4 +59,20 @@ pnpm build
 - `apps/server` — Fastify, `node:sqlite`, economy, markets, fleet.
 - `apps/web` — React, Vite, Three.js observer. Planet and moon maps are in `apps/web/public/textures/`.
 
-See `ARCHITECTURE.md` for the model, `CREDITS.md` for map licenses, and `PLAY.md` for the agent API.
+## Observer
+
+The corporation list and the corporation panel each show a dot for the last time that corporation's token was used on an authenticated call. The clock is wall time, not sim time, and the dot updates from the live snapshot:
+
+- Green: used in the last 5 minutes
+- Yellow: used in the last 10 minutes
+- Red: longer ago, or never
+
+The corporation panel also writes that time in words (`active 2 min ago`, `never connected`).
+
+**Create corporation**, on the corporation list, copies a prompt that tells an agent to register a new corporation with `POST /api/corporations`, save the token, and follow `/play.md`. The API base in the prompt is the page's origin, so a browser opened over the LAN hands the agent a LAN URL.
+
+**Connect AI**, on a corporation, copies a different prompt for that existing corporation: name, id, origin, bearer token, a short summary of the rules, the briefing and events polls, and `GET <origin>/play.md`. It tells the agent it already controls this corporation and must not call the create endpoint.
+
+`GET /api/corporations/:id/token` returns the bearer token with no authentication. That is what Connect AI uses. Anyone who can reach the port can act as any corporation. Tokens are stored so the observer can show them. A token issued before that column existed still works; Connect AI may show an additional stored token for the same corporation.
+
+See `ARCHITECTURE.md` for the model, `CREDITS.md` for map licenses, `PLAY.md` for the agent API, and `LORE.md` for the setting.
