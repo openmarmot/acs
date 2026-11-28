@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS corporations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   token_hash TEXT NOT NULL UNIQUE,
+  token TEXT,
   credits REAL NOT NULL,
   reserved_credits REAL NOT NULL DEFAULT 0,
   legacy INTEGER NOT NULL DEFAULT 0,
-  created_sim_time REAL NOT NULL
+  created_sim_time REAL NOT NULL,
+  last_active_ms INTEGER
 );
 CREATE TABLE IF NOT EXISTS warehouses (
   id TEXT PRIMARY KEY,
@@ -178,6 +180,11 @@ CREATE INDEX IF NOT EXISTS idx_lots_container ON lots(container_id);
 CREATE INDEX IF NOT EXISTS idx_events_corp ON events(corp_id, id);
 `;
 
+function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return rows.some((row) => row.name === column);
+}
+
 export function openDatabase(dbPath: string): DatabaseSync {
   if (dbPath !== ":memory:") mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -186,6 +193,10 @@ export function openDatabase(dbPath: string): DatabaseSync {
   db.exec("PRAGMA busy_timeout = 5000;");
   db.exec("PRAGMA synchronous = NORMAL;");
   db.exec(SCHEMA);
+  // Databases created before tokens and last-active were stored still open.
+  if (!hasColumn(db, "corporations", "token")) db.exec("ALTER TABLE corporations ADD COLUMN token TEXT");
+  if (!hasColumn(db, "corporations", "last_active_ms")) db.exec("ALTER TABLE corporations ADD COLUMN last_active_ms INTEGER");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_corporations_token ON corporations(token)");
   return db;
 }
 

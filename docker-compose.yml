@@ -7,8 +7,11 @@ services:
       dockerfile: Dockerfile
     image: acs:local
     init: true
+    # 0.0.0.0 publishes the observer and API on every host interface, so other
+    # computers on the LAN can open http://<host-lan-ip>:8787. The process
+    # inside the container also listens on 0.0.0.0 (HOST).
     ports:
-      - "127.0.0.1:8787:8787"
+      - "0.0.0.0:8787:8787"
     environment:
       ACS_DB: /app/data/acs.db
       PORT: "8787"

@@ -28,6 +28,7 @@ import {
   isCommodity,
   type Commodity,
 } from "./content.js";
+import { ACTIVITY_WRITE_INTERVAL_MS } from "./activity.js";
 import { all, get, openDatabase, run } from "./db.js";
 import { ApiError, hashToken, newToken, nid, pos, str, tons } from "./errors.js";
 
@@ -35,10 +36,12 @@ interface Corp {
   id: string;
   name: string;
   token_hash: string;
+  token: string | null;
   credits: number;
   reserved_credits: number;
   legacy: number;
   created_sim_time: number;
+  last_active_ms: number | null;
 }
 
 interface Container {
@@ -162,6 +165,8 @@ export class Simulation {
   readonly listeners = new Set<Listener>();
   private depth = 0;
   private shortageDays = new Set<string>();
+  /** Wall time of the last last-active write, so a fast poll does not hit SQLite every call. */
+  private activityWriteAt = new Map<string, number>();
 
   constructor(dbPath: string, nowMs: () => number = Date.now) {
     this.db = openDatabase(dbPath);
@@ -180,6 +185,7 @@ export class Simulation {
     this.lastWall = this.nowMs();
     const seeded = get<{ value: string }>(this.db, "SELECT value FROM meta WHERE key = 'seeded'");
     if (!seeded) this.tx(() => this.seed());
+    this.backfillTokens();
   }
 
   close(): void {
@@ -318,10 +324,11 @@ export class Simulation {
       const token = newToken();
       run(
         this.db,
-        "INSERT INTO corporations (id, name, token_hash, credits, reserved_credits, legacy, created_sim_time) VALUES (?, ?, ?, ?, 0, 0, ?)",
+        "INSERT INTO corporations (id, name, token_hash, token, credits, reserved_credits, legacy, created_sim_time, last_active_ms) VALUES (?, ?, ?, ?, ?, 0, 0, ?, NULL)",
         id,
         name,
         hashToken(token),
+        token,
         STARTING_CREDITS,
         this.simTime,
       );
@@ -331,15 +338,57 @@ export class Simulation {
   }
 
   corpByToken(token: string): Corp {
-    const row = get<Corp>(this.db, "SELECT * FROM corporations WHERE token_hash = ?", hashToken(token));
+    const presented = token.trim();
+    const byPlain = presented ? get<Corp>(this.db, "SELECT * FROM corporations WHERE token = ?", presented) : undefined;
+    const row = byPlain ?? (presented ? get<Corp>(this.db, "SELECT * FROM corporations WHERE token_hash = ?", hashToken(presented)) : undefined);
     if (!row) {
       throw new ApiError(
         401,
         "unauthorized",
-        "That bearer token does not match a corporation. Register with POST /api/corporations and store the token it returns. The token is shown only once.",
+        "That bearer token does not match a corporation. Register with POST /api/corporations and save the token, or copy one from the observer's Connect AI button.",
       );
     }
+    this.noteActivity(row);
     return row;
+  }
+
+  /**
+   * Remember that this corporation's token was just used. Writes are throttled
+   * so a tight poll loop does not update SQLite on every request. The timestamp
+   * is wall-clock milliseconds, not sim time.
+   */
+  private noteActivity(row: Corp): void {
+    const now = this.nowMs();
+    const written = this.activityWriteAt.get(row.id);
+    if (written !== undefined && now - written >= 0 && now - written < ACTIVITY_WRITE_INTERVAL_MS) return;
+    if (row.last_active_ms != null) {
+      const age = now - Number(row.last_active_ms);
+      if (age >= 0 && age < ACTIVITY_WRITE_INTERVAL_MS) {
+        this.activityWriteAt.set(row.id, Number(row.last_active_ms));
+        return;
+      }
+    }
+    run(this.db, "UPDATE corporations SET last_active_ms = ? WHERE id = ?", now, row.id);
+    this.activityWriteAt.set(row.id, now);
+  }
+
+  /** Stored bearer token for the observer. Unauthenticated on purpose: home LAN. */
+  corpToken(corpId: string): { id: string; name: string; token: string } {
+    const corp = this.requireCorp(corpId);
+    if (!corp.token) {
+      throw new ApiError(500, "token_unavailable", `No stored token for ${corp.name}. Restart the server so it can store one.`);
+    }
+    return { id: corp.id, name: corp.name, token: corp.token };
+  }
+
+  private backfillTokens(): void {
+    const missing = all<{ id: string }>(this.db, "SELECT id FROM corporations WHERE token IS NULL");
+    if (missing.length === 0) return;
+    this.tx(() => {
+      for (const row of missing) {
+        run(this.db, "UPDATE corporations SET token = ? WHERE id = ? AND token IS NULL", newToken(), row.id);
+      }
+    });
   }
 
   requireCorp(id: string): Corp {
@@ -1784,6 +1833,7 @@ export class Simulation {
         ships: get<{ n: number }>(this.db, "SELECT COUNT(*) AS n FROM ships WHERE owner_corp_id = ?", c.id)?.n ?? 0,
         facilities: get<{ n: number }>(this.db, "SELECT COUNT(*) AS n FROM facilities WHERE owner_corp_id = ?", c.id)?.n ?? 0,
         legacy: c.legacy === 1,
+        lastActiveMs: c.last_active_ms == null ? null : Number(c.last_active_ms),
       }))
       .sort((a, b) => b.credits - a.credits);
   }
@@ -2058,12 +2108,14 @@ export class Simulation {
 
   private foundLegacy(name: string): string {
     const id = nid("corp");
+    const token = newToken();
     run(
       this.db,
-      "INSERT INTO corporations (id, name, token_hash, credits, reserved_credits, legacy, created_sim_time) VALUES (?, ?, ?, ?, 0, 1, ?)",
+      "INSERT INTO corporations (id, name, token_hash, token, credits, reserved_credits, legacy, created_sim_time, last_active_ms) VALUES (?, ?, ?, ?, ?, 0, 1, ?, NULL)",
       id,
       name,
-      hashToken(newToken()),
+      hashToken(token),
+      token,
       name.startsWith("Terra") ? 5_000_000 : 2_000_000,
       this.simTime,
     );
