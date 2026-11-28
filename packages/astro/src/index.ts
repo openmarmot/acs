@@ -55,6 +55,13 @@ export {
   type FlightArc,
   type RouteOption,
 } from "./routes.js";
+export {
+  parentRelativeDisplayDistance,
+  viewBodyRadius,
+  viewOffset,
+  viewRingRadii,
+  type ViewFocus,
+} from "./viewScale.js";
 
 export function simTimeToIso(simTimeS: number): string {
   const ms = J2000_UNIX_MS + simTimeS * 1000;

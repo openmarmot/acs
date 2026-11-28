@@ -57,7 +57,7 @@ pnpm build
 
 - `packages/astro` — Kepler propagation, Lambert transfers, route planning. Server and web import the same code.
 - `apps/server` — Fastify, `node:sqlite`, economy, markets, fleet.
-- `apps/web` — React, Vite, Three.js observer.
+- `apps/web` — React, Vite, Three.js observer. Planet and moon maps are in `apps/web/public/textures/`.
 
 ## Observer
 
@@ -75,4 +75,4 @@ The corporation panel also writes that time in words (`active 2 min ago`, `never
 
 `GET /api/corporations/:id/token` returns the bearer token with no authentication. That is what Connect AI uses. Anyone who can reach the port can act as any corporation. Tokens are stored so the observer can show them. A token issued before that column existed still works; Connect AI may show an additional stored token for the same corporation.
 
-See `ARCHITECTURE.md` for the model, `PLAY.md` for the agent API, and `LORE.md` for the setting.
+See `ARCHITECTURE.md` for the model, `CREDITS.md` for map licenses, `PLAY.md` for the agent API, and `LORE.md` for the setting.
