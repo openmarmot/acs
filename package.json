@@ -1,0 +1,18 @@
+{
+  "name": "acs",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @acs/astro build && pnpm --filter @acs/server build && pnpm --filter @acs/web build",
+    "typecheck": "pnpm --filter @acs/astro build && pnpm --filter @acs/server typecheck && pnpm --filter @acs/web typecheck",
+    "test": "pnpm --filter @acs/astro build && pnpm --filter @acs/astro test && pnpm --filter @acs/server test",
+    "dev": "pnpm --filter @acs/astro build && pnpm -r --parallel --filter @acs/server --filter @acs/web dev"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
