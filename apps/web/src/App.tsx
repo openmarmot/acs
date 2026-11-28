@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getBody } from "@acs/astro";
+import { activityBand, activityPhrase } from "./activity";
+import { PromptModal } from "./PromptModal";
+import { connectPrompt, createCorpPrompt } from "./prompts";
 import { mountScene, type Focus, type ShipView } from "./scene";
 
 interface Clock {
@@ -15,8 +18,13 @@ interface Snapshot {
   facilities: Array<{ id: string; name: string; kind: string; bodyId: string; ownerName: string; askPrice: number | null; condition: number }>;
   warehouses: Array<{ id: string; name: string; bodyId: string; ownerName: string; capacity: number; listedTons: number; listedRate: number | null; storedTons: number; leasedTons: number }>;
   events: Array<{ id: number; sim_time: number; type: string; message: string }>;
-  leaderboard: Array<{ id: string; name: string; credits: number; population: number; ships: number; facilities: number; legacy: boolean }>;
+  leaderboard: Array<{ id: string; name: string; credits: number; population: number; ships: number; facilities: number; legacy: boolean; lastActiveMs: number | null }>;
 }
+
+type Modal =
+  | null
+  | { kind: "create" }
+  | { kind: "connect"; corpId: string; name: string; loading: boolean; token: string | null; error: string | null };
 
 interface Market {
   commodities: Record<string, { bids: Array<{ qty: number; price: number }>; asks: Array<{ qty: number; price: number }> }>;
@@ -41,10 +49,33 @@ export function App() {
   const [market, setMarket] = useState<Market | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modal, setModal] = useState<Modal>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const connectSeq = useRef(0);
+  const corpPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     live.current.focus = focus;
   }, [focus]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!corpId) return;
+    corpPanelRef.current?.scrollIntoView({ block: "nearest" });
+  }, [corpId]);
+
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModal(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modal]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -142,12 +173,43 @@ export function App() {
     await fetch("/api/sim/clock", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paused }) });
   };
 
+  const openConnect = async (corpId: string, name: string) => {
+    const seq = ++connectSeq.current;
+    setModal({ kind: "connect", corpId, name, loading: true, token: null, error: null });
+    try {
+      const res = await fetch(`/api/corporations/${encodeURIComponent(corpId)}/token`);
+      const body = (await res.json().catch(() => null)) as { token?: unknown; message?: string } | null;
+      if (connectSeq.current !== seq) return;
+      if (!res.ok || !body || typeof body.token !== "string") {
+        setModal({ kind: "connect", corpId, name, loading: false, token: null, error: body?.message ?? "Could not load the token." });
+        return;
+      }
+      setModal({ kind: "connect", corpId, name, loading: false, token: body.token, error: null });
+    } catch (err) {
+      if (connectSeq.current !== seq) return;
+      setModal({
+        kind: "connect",
+        corpId,
+        name,
+        loading: false,
+        token: null,
+        error: err instanceof Error ? err.message : "Could not load the token.",
+      });
+    }
+  };
+
   const planetId = focus.level === "planet" ? focus.id : focus.level === "moon" ? parentOf(focus.id) : null;
   const corp = snapshot?.leaderboard.find((row) => row.id === corpId) ?? null;
   const bodyFacilities = snapshot?.facilities.filter((row) => row.bodyId === selected) ?? [];
   const bodyShips = snapshot?.ships.filter((row) => row.state === "orbiting" && row.bodyId === selected) ?? [];
   const bodyWarehouses = snapshot?.warehouses.filter((row) => row.bodyId === selected) ?? [];
   const corpShips = snapshot?.ships.filter((row) => corp && row.ownerName === corp.name) ?? [];
+  const corpPhrase = corp ? activityPhrase(corp.lastActiveMs, now) : "";
+  const corpBand = corp ? activityBand(corp.lastActiveMs, now) : "red";
+  const connectPromptText =
+    modal?.kind === "connect" && modal.token
+      ? connectPrompt({ name: modal.name, id: modal.corpId, base: location.origin, token: modal.token })
+      : null;
 
   return (
     <div className="app">
@@ -208,15 +270,33 @@ export function App() {
         </nav>
         <aside className="dock left">
           <h2>Corporations</h2>
-          {(snapshot?.leaderboard ?? []).map((row) => (
-            <button key={row.id} className={row.id === corpId ? "rowbtn on" : "rowbtn"} onClick={() => setCorpId(row.id)}>
-              <span>{row.name}</span>
-              <span className="num">{Math.round(row.credits).toLocaleString()}</span>
-            </button>
-          ))}
+          <p className="muted">Green is the last 5 minutes, yellow the last 10, red if quiet.</p>
+          <button type="button" className="action" onClick={() => setModal({ kind: "create" })}>
+            Create corporation
+          </button>
+          {(snapshot?.leaderboard ?? []).map((row) => {
+            const phrase = activityPhrase(row.lastActiveMs, now);
+            const band = activityBand(row.lastActiveMs, now);
+            return (
+              <button key={row.id} type="button" className={row.id === corpId ? "rowbtn on" : "rowbtn"} data-corp-id={row.id} onClick={() => setCorpId(row.id)}>
+                <span className="corpname">
+                  <span className={`dot ${band}`} data-activity={band} title={phrase} role="img" aria-label={phrase} />
+                  <span>{row.name}</span>
+                </span>
+                <span className="num">{Math.round(row.credits).toLocaleString()}</span>
+              </button>
+            );
+          })}
           {corp && (
-            <>
-              <h2>{corp.name}</h2>
+            <div ref={corpPanelRef}>
+              <h2 className="corptitle">
+                <span className={`dot ${corpBand}`} data-activity={corpBand} title={corpPhrase} role="img" aria-label={corpPhrase} />
+                {corp.name}
+              </h2>
+              <p className="activity">{corpPhrase}</p>
+              <button type="button" className="action" onClick={() => void openConnect(corp.id, corp.name)}>
+                Connect AI
+              </button>
               <p className="muted">
                 {corp.legacy ? "Legacy agency. " : ""}
                 Population {corp.population.toLocaleString()}. {corp.ships} ships, {corp.facilities} facilities.
@@ -227,7 +307,7 @@ export function App() {
                   {ship.name}: {ship.state === "in_transit" ? `in transit to ${ship.flight?.toBodyId}` : `orbiting ${ship.bodyId}`}
                 </p>
               ))}
-            </>
+            </div>
           )}
           <h2>Events</h2>
           <ul className="feed">
@@ -303,6 +383,27 @@ export function App() {
           )}
         </aside>
       </div>
+      {modal?.kind === "create" && (
+        <PromptModal
+          kind="create"
+          title="Create corporation"
+          lede="Paste this into an agent. It registers a new corporation, saves the token, and then plays from the manual."
+          prompt={createCorpPrompt(location.origin)}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === "connect" && (
+        <PromptModal
+          kind="connect"
+          title={`Connect AI · ${modal.name}`}
+          lede="Paste this into an agent. It already controls this corporation and must not create a new one."
+          prompt={connectPromptText}
+          loading={modal.loading}
+          error={modal.error}
+          onClose={() => setModal(null)}
+          onRetry={() => void openConnect(modal.corpId, modal.name)}
+        />
+      )}
     </div>
   );
 }

@@ -82,7 +82,7 @@ SQLite through `node:sqlite`, `journal_mode=WAL`, `foreign_keys=ON`, `synchronou
 | Table | Role |
 | --- | --- |
 | `clock` | Single row, sim time and speed |
-| `corporations` | Name, credits, reserved credits, token hash, legacy flag |
+| `corporations` | Name, credits, reserved credits, token hash, stored token, legacy flag, wall-clock last active |
 | `warehouses` | Capacity, listed spare tonnes and rate, optional ask price |
 | `leases` | Tenant, tonnes, rate, accrued unpaid, unpaid-since |
 | `containers` | `warehouse_owner`, `bay`, or `hold`, with a capacity |
@@ -98,7 +98,9 @@ SQLite through `node:sqlite`, `journal_mode=WAL`, `foreign_keys=ON`, `synchronou
 | `constructions` | Timed recipes |
 | `events` | Monotonic id, public flag, corp id, message |
 
-Tokens are stored as SHA-256 only.
+Each corporation has a bearer token stored in plaintext (`token`) and as SHA-256 (`token_hash`). Corporations created now store both for the same secret. Authenticated routes accept the plaintext or any token whose hash still matches `token_hash`, so a token issued before plaintext was stored keeps working. Rows with a null `token` get one at startup; that does not replace the hash. `GET /api/corporations/:id/token` returns the stored token with no authentication, for the observer on a trusted LAN.
+
+`last_active_ms` is the wall-clock time of the last authenticated call, in Unix milliseconds. Null means the token has never been used. The write is throttled to at most once every 5 seconds per corporation, counting both the in-memory timestamp and the stored one, so a fast poll does not update SQLite every request. The leaderboard, the corporation profile, and the world snapshot include `lastActiveMs`. The observer colors that age against real time: green within 5 minutes, yellow within 10, red otherwise.
 
 ## Economy
 
@@ -146,11 +148,11 @@ Construction deducts materials immediately and completes when sim time passes `c
 
 ### Legacy seed
 
-Terra Directorate (Earth), Luna Compact (Moon), and Mars Authority (Mars) are corporations with the same rules as anyone else. They start with population because they own facilities and ships, with warehouses that list spare volume, with commodity asks and standing orders, and with a hauler, a tanker, and a small rare-mineral mine listed for sale. Their tokens are not retained.
+Terra Directorate (Earth), Luna Compact (Moon), and Mars Authority (Mars) are corporations with the same rules as anyone else. They start with population because they own facilities and ships, with warehouses that list spare volume, with commodity asks and standing orders, and with a hauler, a tanker, and a small rare-mineral mine listed for sale. Their tokens are stored and can be copied from the observer's Connect AI button.
 
 ## HTTP and the observer
 
-Fastify serves the JSON API and `/play.md`. A WebSocket at `/ws` pushes `{type:"world", snapshot}` after mutations and on the clock tick. The snapshot carries the clock, ships (including arc initial conditions), facilities, warehouses, the public event tail, and the leaderboard.
+Fastify serves the JSON API and `/play.md`. A WebSocket at `/ws` pushes `{type:"world", snapshot}` after mutations and on the clock tick. The snapshot carries the clock, ships (including arc initial conditions), facilities, warehouses, the public event tail, and the leaderboard (including each corporation's `lastActiveMs`). The bearer token is not on that payload. `GET /api/corporations/:id/token` is the unauthenticated read the observer uses for Connect AI.
 
 The observer is a React shell around a Three.js scene. Orbits and ship dots call `@acs/astro` every frame. The view has three levels:
 

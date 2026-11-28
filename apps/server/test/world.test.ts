@@ -1,7 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { readFileSync, mkdtempSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { ACTIVITY_GREEN_MS, ACTIVITY_WRITE_INTERVAL_MS, ACTIVITY_YELLOW_MS, activityBand } from "../src/activity.js";
+import { openDatabase } from "../src/db.js";
 import { createApp, type AppContext } from "../src/http.js";
 
 const open: AppContext[] = [];
@@ -240,5 +244,148 @@ describe("acs world", () => {
     expect(moon.ships.some((row: { id: string; state: string }) => row.id === ship.assetId && row.state === "orbiting")).toBe(true);
     const events = await ctx.app.inject({ method: "GET", url: "/api/me/events?since=0", headers: auth(corp.token) });
     expect(events.json().events.some((event: { type: string }) => event.type === "arrival")).toBe(true);
+  });
+
+  it("classifies last-active age at 5 and 10 minutes", () => {
+    expect(ACTIVITY_GREEN_MS).toBe(5 * 60 * 1000);
+    expect(ACTIVITY_YELLOW_MS).toBe(10 * 60 * 1000);
+    expect(ACTIVITY_WRITE_INTERVAL_MS).toBeGreaterThanOrEqual(2_000);
+    expect(ACTIVITY_WRITE_INTERVAL_MS).toBeLessThanOrEqual(10_000);
+    const t0 = 1_700_000_000_000;
+    expect(activityBand(null, t0)).toBe("red");
+    expect(activityBand(Number.NaN, t0)).toBe("red");
+    expect(activityBand(t0, t0)).toBe("green");
+    expect(activityBand(t0, t0 + ACTIVITY_GREEN_MS)).toBe("green");
+    expect(activityBand(t0, t0 + ACTIVITY_GREEN_MS + 1)).toBe("yellow");
+    expect(activityBand(t0, t0 + ACTIVITY_YELLOW_MS)).toBe("yellow");
+    expect(activityBand(t0, t0 + ACTIVITY_YELLOW_MS + 1)).toBe("red");
+    const observer = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/src/activity.ts"), "utf8");
+    expect(observer).toContain("5 * 60 * 1000");
+    expect(observer).toContain("10 * 60 * 1000");
+    expect(observer).toContain("never connected");
+    expect(observer).toContain("active ${minutes} min ago");
+  });
+
+  it("records last activity when a token is used and throttles the write", async () => {
+    let wall = 1_700_000_000_000;
+    const ctx = await boot(() => wall);
+    const corp = await register(ctx, "Signal Corps");
+    const other = await register(ctx, "Quiet Books");
+
+    const row = async (id: string) => {
+      const res = await ctx.app.inject({ method: "GET", url: "/api/leaderboard" });
+      expect(res.statusCode).toBe(200);
+      const found = res.json().find((entry: { id: string }) => entry.id === id);
+      expect(found).toBeTruthy();
+      return found as { id: string; lastActiveMs: number | null };
+    };
+
+    expect((await row(corp.id)).lastActiveMs).toBeNull();
+    expect((await row(other.id)).lastActiveMs).toBeNull();
+
+    const briefing = await ctx.app.inject({ method: "GET", url: "/api/me/briefing", headers: auth(corp.token) });
+    expect(briefing.statusCode).toBe(200);
+    expect((await row(corp.id)).lastActiveMs).toBe(wall);
+    expect((await row(other.id)).lastActiveMs).toBeNull();
+    expect(activityBand(wall, wall)).toBe("green");
+
+    const stamped = wall;
+    wall += ACTIVITY_WRITE_INTERVAL_MS - 1;
+    const events = await ctx.app.inject({ method: "GET", url: "/api/me/events?since=0", headers: auth(corp.token) });
+    expect(events.statusCode).toBe(200);
+    expect((await row(corp.id)).lastActiveMs).toBe(stamped);
+
+    wall += 1;
+    const denied = await ctx.app.inject({ method: "GET", url: "/api/me/briefing", headers: auth("acs_not_a_token") });
+    expect(denied.statusCode).toBe(401);
+    const revealed = await ctx.app.inject({ method: "GET", url: `/api/corporations/${corp.id}/token` });
+    expect(revealed.statusCode).toBe(200);
+    expect(revealed.json()).toEqual({ id: corp.id, name: "Signal Corps", token: corp.token });
+    expect((await row(corp.id)).lastActiveMs).toBe(stamped);
+
+    const missed = await ctx.app.inject({
+      method: "POST",
+      url: "/api/orders",
+      headers: auth(corp.token),
+      payload: {},
+    });
+    expect(missed.statusCode).toBe(400);
+    expect((await row(corp.id)).lastActiveMs).toBe(wall);
+
+    const snapshot = await ctx.app.inject({ method: "GET", url: "/api/world/snapshot" });
+    const profile = await ctx.app.inject({ method: "GET", url: `/api/corporations/${corp.id}` });
+    expect(snapshot.json().leaderboard.find((entry: { id: string }) => entry.id === corp.id).lastActiveMs).toBe(wall);
+    expect(profile.json().lastActiveMs).toBe(wall);
+    expect(snapshot.body).not.toContain(corp.token);
+    expect(profile.body).not.toContain(corp.token);
+    expect((await ctx.app.inject({ method: "GET", url: "/api/leaderboard" })).body).not.toContain(corp.token);
+
+    wall += 50;
+    const otherBrief = await ctx.app.inject({ method: "GET", url: "/api/me/briefing", headers: auth(other.token) });
+    expect(otherBrief.statusCode).toBe(200);
+    expect((await row(other.id)).lastActiveMs).toBe(wall);
+    expect((await row(corp.id)).lastActiveMs).toBe(wall - 50);
+  });
+
+  it("keeps a previously issued token working after a stored token is added", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "acs-"));
+    const dbPath = path.join(dir, "acs.db");
+    const first = await createApp({ dbPath, tick: false, now: () => 5_000 });
+    const created = await register(first, "Old Token Mining");
+    await first.close();
+
+    const raw = new DatabaseSync(dbPath);
+    raw.prepare("UPDATE corporations SET token = NULL WHERE id = ?").run(created.id);
+    raw.close();
+
+    const second = await createApp({ dbPath, tick: false, now: () => 9_000 });
+    open.push(second);
+    const briefing = await second.app.inject({ method: "GET", url: "/api/me/briefing", headers: auth(created.token) });
+    expect(briefing.statusCode, briefing.body).toBe(200);
+    expect(briefing.json().corp.name).toBe("Old Token Mining");
+
+    const revealed = await second.app.inject({ method: "GET", url: `/api/corporations/${created.id}/token` });
+    expect(revealed.statusCode).toBe(200);
+    expect(revealed.json().token).not.toBe(created.token);
+    expect(String(revealed.json().token)).toMatch(/^acs_[0-9a-f]+$/);
+    const again = await second.app.inject({
+      method: "GET",
+      url: "/api/me/briefing",
+      headers: auth(revealed.json().token as string),
+    });
+    expect(again.statusCode, again.body).toBe(200);
+    const board = await second.app.inject({ method: "GET", url: "/api/leaderboard" });
+    expect(board.json().find((entry: { id: string }) => entry.id === created.id).lastActiveMs).toBe(9_000);
+  });
+
+  it("adds token and last-active columns when opening an older database", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "acs-"));
+    const dbPath = path.join(dir, "acs.db");
+    const raw = new DatabaseSync(dbPath);
+    raw.exec(`CREATE TABLE corporations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      token_hash TEXT NOT NULL UNIQUE,
+      credits REAL NOT NULL,
+      reserved_credits REAL NOT NULL DEFAULT 0,
+      legacy INTEGER NOT NULL DEFAULT 0,
+      created_sim_time REAL NOT NULL
+    )`);
+    raw.prepare(
+      "INSERT INTO corporations (id, name, token_hash, credits, reserved_credits, legacy, created_sim_time) VALUES (?, ?, ?, ?, 0, 0, 0)",
+    ).run("corp_old", "Old Books", "abc", 1);
+    raw.close();
+
+    const db = openDatabase(dbPath);
+    const names = (db.prepare("PRAGMA table_info(corporations)").all() as { name: string }[]).map((column) => column.name);
+    expect(names).toContain("token");
+    expect(names).toContain("last_active_ms");
+    const row = db.prepare("SELECT name, token, last_active_ms FROM corporations WHERE id = ?").get("corp_old") as {
+      name: string;
+      token: string | null;
+      last_active_ms: number | null;
+    };
+    expect(row).toEqual({ name: "Old Books", token: null, last_active_ms: null });
+    db.close();
   });
 });

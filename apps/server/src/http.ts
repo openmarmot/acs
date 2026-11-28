@@ -132,7 +132,7 @@ export async function createApp(opts: AppOptions): Promise<AppContext> {
       throw new ApiError(
         401,
         "unauthorized",
-        "Send header Authorization: Bearer <token>. Register with POST /api/corporations. The token is returned once.",
+        "Send header Authorization: Bearer <token>. Register with POST /api/corporations, or copy a token from the observer's Connect AI button.",
       );
     }
     return sim.corpByToken(header.slice(7).trim());
@@ -153,6 +153,7 @@ export async function createApp(opts: AppOptions): Promise<AppContext> {
   );
   app.get("/api/leaderboard", async () => sim.leaderboard());
   app.get("/api/markets/:bodyId", async (req) => sim.market((req.params as { bodyId: string }).bodyId));
+  app.get("/api/corporations/:id/token", async (req) => sim.corpToken((req.params as { id: string }).id));
   app.get("/api/corporations/:id", async (req) => sim.profile((req.params as { id: string }).id));
   app.get("/api/routes/plan", async (req) => {
     const query = req.query as { from?: string; to?: string; at?: string };

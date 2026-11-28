@@ -106,6 +106,30 @@ button { cursor: pointer; }
   gap: 8px;
 }
 .rowbtn.on { border-color: var(--amber); color: var(--ink); }
+.corpname { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.corptitle { display: flex; align-items: center; gap: 8px; }
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+.dot.green { background: #3ddc84; }
+.dot.yellow { background: #f0c14a; }
+.dot.red { background: #e15b4a; }
+.activity { margin: 0 0 8px; font-size: 13px; }
+.action, .textbtn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--dim);
+}
+.action { display: block; width: 100%; text-align: center; margin: 6px 0 8px; color: var(--amber-2); border-color: rgba(230, 177, 90, 0.45); }
+.action:hover, .textbtn:hover { border-color: var(--amber); color: var(--ink); }
+.textbtn.primary { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+.textbtn:disabled { opacity: 0.45; cursor: default; }
 .num { font-family: var(--mono); font-size: 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; padding: 4px 2px; border-bottom: 1px solid var(--line); }
@@ -116,6 +140,46 @@ th { color: var(--dim); font-weight: 500; }
 .pill { color: var(--good); }
 .warn { color: var(--bad); }
 .status { margin-left: 8px; font-size: 11px; color: var(--dim); }
+
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.62);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.modal {
+  width: min(680px, 100%);
+  max-height: min(86vh, 820px);
+  overflow: auto;
+  background: #12151c;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 16px 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+.modal h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+.modal textarea {
+  width: 100%;
+  min-height: 320px;
+  margin-top: 8px;
+  background: #0b0d12;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 @media (max-width: 900px) {
   .dock { width: min(280px, 80vw); top: auto; max-height: 38%; }
