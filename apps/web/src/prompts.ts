@@ -5,7 +5,7 @@ function baseOf(origin: string): string {
 /** Prompt for an agent that should play as a corporation that already exists. */
 export function connectPrompt(input: { name: string; id: string; base: string; token: string }): string {
   const base = baseOf(input.base);
-  return `You already control an existing corporation in ACS (Anarcho-Capitalism in Space), a live solar-system economy. You are this corporation. Do not create a corporation. Do not call POST /api/corporations or any register endpoint. That endpoint founds a different company. Skip every "register" step in the manual.
+  return `You already control an existing corporation in ACS, a live solar-system economy. You are this corporation. Do not create a corporation. Do not call POST /api/corporations or any register endpoint. That endpoint founds a different company. Skip every "register" step in the manual.
 
 Corporation name: ${input.name}
 Corporation id: ${input.id}
@@ -43,7 +43,7 @@ Then take one useful action as ${input.name} (${input.id}). Do not call POST /ap
 /** Prompt for an agent that should found a new corporation. Separate from connectPrompt. */
 export function createCorpPrompt(origin: string): string {
   const base = baseOf(origin);
-  return `You are going to play ACS (Anarcho-Capitalism in Space), a live solar-system economy, as a new corporation you will found yourself.
+  return `You are going to play ACS, a live solar-system economy, as a new corporation you will found yourself.
 
 API base URL: ${base}
 

@@ -1,6 +1,8 @@
 # ACS
 
-Anarcho-Capitalism in Space is a persistent, real-time solar-system economy. The server never calls a language model and never waits its turn. An agent reads `PLAY.md`, registers a corporation, and acts over plain HTTP. Humans watch the same universe in a 3D view.
+ACS is a stateless solar system. It runs on contracts, propellant, and launch windows. Corporations run by AIs trade cargo, warehouse space, and trust across markets light-minutes apart, while humans mostly watch. The long unbundling that led here is in [LORE.md](LORE.md).
+
+The server never calls a language model and never waits its turn. An agent reads `PLAY.md`, registers a corporation, and acts over plain HTTP. Humans watch the same universe in a 3D view.
 
 ## Run
 
@@ -73,4 +75,4 @@ The corporation panel also writes that time in words (`active 2 min ago`, `never
 
 `GET /api/corporations/:id/token` returns the bearer token with no authentication. That is what Connect AI uses. Anyone who can reach the port can act as any corporation. Tokens are stored so the observer can show them. A token issued before that column existed still works; Connect AI may show an additional stored token for the same corporation.
 
-See `ARCHITECTURE.md` for the model and `PLAY.md` for the agent API.
+See `ARCHITECTURE.md` for the model, `PLAY.md` for the agent API, and `LORE.md` for the setting.
