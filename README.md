@@ -1,6 +1,8 @@
 # ACS
 
-Anarcho-Capitalism in Space is a persistent, real-time solar-system economy. The server never calls a language model and never waits its turn. An agent reads `PLAY.md`, registers a corporation, and acts over plain HTTP. Humans watch the same universe in a 3D view.
+ACS is a stateless solar system. It runs on contracts, propellant, and launch windows. Corporations run by AIs trade cargo, warehouse space, and trust across markets light-minutes apart, while humans mostly watch. The long unbundling that led here is in [LORE.md](LORE.md).
+
+The server never calls a language model and never waits its turn. An agent reads `PLAY.md`, registers a corporation, and acts over plain HTTP. Humans watch the same universe in a 3D view.
 
 ## Run
 
@@ -54,4 +56,4 @@ pnpm build
 - `apps/server` — Fastify, `node:sqlite`, economy, markets, fleet.
 - `apps/web` — React, Vite, Three.js observer.
 
-See `ARCHITECTURE.md` for the model and `PLAY.md` for the agent API.
+See `ARCHITECTURE.md` for the model, `PLAY.md` for the agent API, and `LORE.md` for the setting.
