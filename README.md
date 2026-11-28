@@ -52,6 +52,6 @@ pnpm build
 
 - `packages/astro` — Kepler propagation, Lambert transfers, route planning. Server and web import the same code.
 - `apps/server` — Fastify, `node:sqlite`, economy, markets, fleet.
-- `apps/web` — React, Vite, Three.js observer.
+- `apps/web` — React, Vite, Three.js observer. Planet and moon maps are in `apps/web/public/textures/`.
 
-See `ARCHITECTURE.md` for the model and `PLAY.md` for the agent API.
+See `ARCHITECTURE.md` for the model, `CREDITS.md` for map licenses, and `PLAY.md` for the agent API.

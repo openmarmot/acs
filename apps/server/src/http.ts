@@ -60,6 +60,9 @@ function contentType(file: string): string {
       return "application/json; charset=utf-8";
     case ".png":
       return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
     case ".webp":
       return "image/webp";
     case ".ico":
@@ -376,7 +379,7 @@ export async function createApp(opts: AppOptions): Promise<AppContext> {
     if (file && existsSync(file) && statSync(file).isFile()) {
       return reply.type(contentType(file)).send(createReadStream(file));
     }
-    if (urlPath.startsWith("/assets/")) {
+    if (urlPath.startsWith("/assets/") || urlPath.startsWith("/textures/")) {
       return reply.status(404).send({ error: "not_found", message: `Missing asset ${urlPath}.`, details: null });
     }
     return reply.type("text/html; charset=utf-8").send(createReadStream(path.join(observer, "index.html")));

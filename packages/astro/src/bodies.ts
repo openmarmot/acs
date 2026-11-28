@@ -36,6 +36,10 @@ export interface BodyDef {
   parentId: string | null;
   /** GM of this body, km^3/s^2. */
   mu: number;
+  /**
+   * Volumetric mean radius, km. NASA/JPL planetary parameters and the matching
+   * IAU moon values. Parking orbits use it. The observer scales it for display.
+   */
   radiusKm: number;
   color: string;
   /** Drawn in the uncluttered solar-system view (not moons). */

@@ -152,11 +152,13 @@ Terra Directorate (Earth), Luna Compact (Moon), and Mars Authority (Mars) are co
 
 Fastify serves the JSON API and `/play.md`. A WebSocket at `/ws` pushes `{type:"world", snapshot}` after mutations and on the clock tick. The snapshot carries the clock, ships (including arc initial conditions), facilities, warehouses, the public event tail, and the leaderboard.
 
-The observer is a React shell around a Three.js scene. Orbits and ship dots call `@acs/astro` every frame. The view has three levels:
+The observer is a React shell around a Three.js scene. Orbits and ship dots call `@acs/astro` every frame. Display scale lives in `viewScale` and is not used by propagation, Lambert, or the economy. The view has three levels:
 
-1. Solar system: Sun, eight planets, Ceres, Vesta, Pallas, Psyche, Pluto. Heliocentric distances are drawn with `sqrt(r)` so Neptune fits.
-2. Planet: that body at the origin, its moons on a magnified local scale, and its heliocentric orbit when you zoom out.
-3. Moon: the parent and the moon's path, camera on the moon.
+1. Solar system: Sun, eight planets, Ceres, Vesta, Pallas, Psyche, Pluto. Heliocentric distance is `16 * sqrt(au)`, so Neptune still fits. Body radii keep their real mean-radius ratios (Jupiter is about 11 Earths). The Sun uses that ratio up to a cap that leaves Mercury outside the photosphere at perihelion, and it stays the largest body. Saturn's rings use the real ring radii.
+2. Planet: that body at the origin. Moon radii keep their real ratio to the parent. Distance from the parent is a power law, so the outer moon sits in frame and no moon or ring falls inside the planet. The parent's heliocentric orbit appears when you zoom out, through the same radial map.
+3. Moon: the same local map, magnified until the focused moon fills the view. The parent keeps the true size ratio, so it hangs in the sky at the right angular size.
+
+Surfaces are equirectangular maps (see `CREDITS.md`). Bodies with no published map get a procedural rock texture. A point light at the Sun, plus a little ambient fill, shades the day side.
 
 Breadcrumbs step back up. The HUD reads the snapshot and `GET /api/markets/:bodyId`. Pause and the speed buttons call `POST /api/sim/clock`.
 
